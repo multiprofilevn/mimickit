@@ -1,0 +1,125 @@
+{
+  "$schema": "./schemas/ck-config.schema.json",
+  "assertions": [],
+  "codingLevel": 3,
+  "docs": {
+    "maxLoc": 800
+  },
+  "gemini": {
+    "model": "gemini-3-flash-preview"
+  },
+  "hooks": {
+    "secrets-scanner-pre-commit": {
+      "allow": [
+        "\\.claude/skills/payment-integration/",
+        "\\.claude/skills/better-auth/",
+        "\\.claude/skills/mcp-builder/",
+        "\\.claude/skills/shopify/references/embedded-apps\\.md"
+      ]
+    }
+  },
+  "locale": {
+    "thinkingLanguage": null,
+    "responseLanguage": "vi"
+  },
+  "paths": {
+    "docs": "docs",
+    "plans": "plans",
+    "reports": "plans/reports"
+  },
+  "plan": {
+    "namingFormat": "{date}-{issue}-{slug}",
+    "dateFormat": "YYMMDD-HHmm",
+    "issuePrefix": "GH-",
+    "reportsDir": "reports",
+    "resolution": {
+      "order": [
+        "session",
+        "branch"
+      ],
+      "branchPattern": "(?:feat|fix|chore|refactor|docs)/(?:[^/]+/)?(.+)"
+    },
+    "validation": {
+      "mode": "prompt",
+      "minQuestions": 3,
+      "maxQuestions": 8,
+      "focusAreas": [
+        "assumptions",
+        "risks",
+        "tradeoffs",
+        "architecture"
+      ]
+    }
+  },
+  "privacyBlock": true,
+  "project": {
+    "type": "auto",
+    "packageManager": "auto",
+    "framework": "auto"
+  },
+  "skills": {
+    "research": {
+      "useGemini": false
+    }
+  },
+  "statusline": "full",
+  "statuslineColors": true,
+  "trust": {
+    "passphrase": null,
+    "enabled": false
+  },
+  "workflow": {
+    "hasTests": false,
+    "skipBlockers": [
+      "cook",
+      "fix"
+    ],
+    "simplifyThreshold": {
+      "maxLoc": 30,
+      "maxFiles": 2
+    },
+    "chains": {
+      "brainstorm": [
+        "plan",
+        "cook",
+        "test",
+        "simplify",
+        "docs",
+        "git"
+      ],
+      "plan": [
+        "cook",
+        "test",
+        "simplify",
+        "docs",
+        "git"
+      ],
+      "cook": [
+        "test",
+        "simplify",
+        "docs",
+        "git"
+      ],
+      "debug": [
+        "fix",
+        "docs",
+        "git"
+      ],
+      "fix": [
+        "docs",
+        "git"
+      ],
+      "test": [
+        "docs",
+        "git"
+      ],
+      "simplify": [
+        "docs",
+        "git"
+      ],
+      "docs": [
+        "git"
+      ]
+    }
+  }
+}

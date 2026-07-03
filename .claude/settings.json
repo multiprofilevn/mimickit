@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "skillListingBudgetFraction": 0.04,
+  "skillListingMaxDescChars": 512,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node \".claude/statusline.cjs\"",
+    "padding": 0
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/session-init.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/usage-quota-cache-refresh.cjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/simplify-gate.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/dev-rules-reminder.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/usage-quota-cache-refresh.cjs\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/subagent-init.cjs\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/descriptive-name.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Glob|Grep|Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/scout-block.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/privacy-block.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/db-readonly-guard.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/git-safety-guard.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/secrets-scanner-pre-commit.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/decision-visibility-gate.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/env-dev-guard.cjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/plan-format-kanban.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/post-write-typecheck.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Task|TaskCreate|TaskUpdate|TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/session-state.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/usage-quota-cache-refresh.cjs\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/chain-reminder.cjs\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/session-state.cjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/session-state.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/notifications/notify.cjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
