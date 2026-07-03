@@ -17,6 +17,9 @@ import (
 // --remote-debugging-port after the adapter reports Start success.
 const cdpDiscoveryTimeout = 15 * time.Second
 
+// errNameRequired is returned when Options.Name (the profile key) is empty.
+var errNameRequired = fmt.Errorf("mimickit: Options.Name is required")
+
 // ProxySpec is the per-profile proxy the browser should route through. It maps
 // onto the adapter's LauncherOverrides.Proxy.
 type ProxySpec struct {
@@ -30,12 +33,13 @@ type ProxySpec struct {
 
 // Options configures a single profile launch.
 type Options struct {
-	Name       string // profile name — also seeds the deterministic ProfileID
-	OSType     string // "windows" | "macos" | "linux"; default "windows"
-	ProfileDir string // base dir; profile data stored under ProfileDir/<name>
-	AdapterDir string // dir containing adapter.exe; "" => ResolveCoreDir
-	Headless   bool
-	Puppeteer  bool // open a CDP --remote-debugging-port (default true if unset)
+	Name        string // stable per-profile key — seeds the adapter profileID (UUID) and the profile-data dir (ProfileDir/<Name>). Use the profile ID, not the display name, so the data dir is stable across renames.
+	DisplayName string // human-readable session name shown by the browser; falls back to Name when empty.
+	OSType      string // "windows" | "macos" | "linux"; default "windows"
+	ProfileDir  string // base dir; profile data stored under ProfileDir/<Name>
+	AdapterDir  string // dir containing adapter.exe; "" => ResolveCoreDir
+	Headless    bool
+	Puppeteer   bool // open a CDP --remote-debugging-port (default true if unset)
 
 	// Fingerprint and Flags are supplied by the API (P3+). When nil, POC-time
 	// pixelscan-green defaults are used. The launcher NEVER sets core here — it
@@ -44,6 +48,13 @@ type Options struct {
 	Flags       json.RawMessage
 
 	Proxy *ProxySpec
+
+	// SkipCDPDiscovery makes Launch return as soon as the adapter reports the
+	// profile started, WITHOUT scanning for the chrome debug port. Manual-drive
+	// callers (the windows client) don't use Handle.CDPPort, so waiting on the
+	// port scan only delays the "running" state. Automation callers (auto) leave
+	// this false so Handle.CDPPort is populated for chrome_engine.Connect.
+	SkipCDPDiscovery bool
 
 	// selenium toggles the legacy ChromeDriver path; left unexported and false —
 	// mimic exposes CDP via Puppeteer. Kept for internal experiments only.
@@ -67,11 +78,13 @@ type Handle struct {
 	client    *plugin.Client
 }
 
-// Launch spawns adapter.exe, initializes it, starts one browser profile, then
-// discovers and returns the live CDP endpoint.
+// Launch spawns a dedicated adapter.exe, initializes it, starts one browser
+// profile, then discovers and returns the live CDP endpoint. The dominant cost
+// is the adapter's Start RPC (spawning + readying chrome, ~2s); the go-plugin
+// connect is negligible, so pre-warming the connection would not speed launches.
 func Launch(opts Options) (*Handle, error) {
 	if opts.Name == "" {
-		return nil, fmt.Errorf("mimickit: Options.Name is required")
+		return nil, errNameRequired
 	}
 	if opts.OSType == "" {
 		opts.OSType = "windows"
@@ -82,37 +95,60 @@ func Launch(opts Options) (*Handle, error) {
 	if err != nil {
 		return nil, err
 	}
+	return startOnAdapter(adp, client, adapterDir, opts)
+}
 
+// startOnAdapter starts a profile on an already-connected adapter and builds the
+// Handle. The Handle owns the adapter client: Handle.Stop kills the adapter
+// process (forceful, reliable teardown — required so the profile dir is fully
+// released before the caller sanitizes/uploads it). The client is killed on a
+// start error.
+func startOnAdapter(adp browserAdapterV1, client *plugin.Client, adapterDir string, opts Options) (*Handle, error) {
 	resp, profileID, err := startProfile(adp, adapterDir, opts)
 	if err != nil {
-		client.Kill()
+		if client != nil {
+			client.Kill()
+		}
 		return nil, err
 	}
 
-	ep, err := findCDPPort(context.Background(), cdpDiscoveryTimeout)
-	if err != nil {
-		// The adapter is up and the profile started, but no CDP port surfaced.
-		// This is exactly the POC gate #2 failure signal — report it, don't hide it.
-		_ = adp.Stop(profileID)
-		client.Kill()
-		return nil, fmt.Errorf("mimickit: profile %s started (driver=%q) but no CDP port found: %w", profileID, resp.Value, err)
-	}
-
-	return &Handle{
+	h := &Handle{
 		ProfileID:  profileID,
-		CDPPort:    ep.Port,
-		CDPAddress: ep.Address,
 		DriverPort: resp.Value,
-		chromePID:  ep.PID,
 		adp:        adp,
 		client:     client,
-	}, nil
+	}
+
+	// Manual-drive callers skip the port scan entirely so "running" state is
+	// reported the instant chrome starts (no up-to-15s wait).
+	if opts.SkipCDPDiscovery {
+		return h, nil
+	}
+
+	// CDP discovery is BEST-EFFORT, never fatal. The adapter owns the chrome
+	// process and the session is valid whether or not we locate a debug port —
+	// manual-drive callers (windows) never touch CDP, and automation callers
+	// (auto) inspect Handle.CDPPort themselves and decide how to proceed. Tearing
+	// the whole session down here would kill a perfectly good browser just because
+	// the port scan was slow or blocked.
+	if ep, cdpErr := findCDPPort(context.Background(), cdpDiscoveryTimeout); cdpErr == nil {
+		h.CDPPort = ep.Port
+		h.CDPAddress = ep.Address
+		h.chromePID = ep.PID
+	} else {
+		fmt.Fprintf(os.Stderr, "[mimickit] profile %s started (driver=%q) but no CDP port found within %s: %v\n", profileID, resp.Value, cdpDiscoveryTimeout, cdpErr)
+	}
+
+	return h, nil
 }
 
-// Stop terminates the browser profile and kills the adapter plugin process.
+// Stop terminates this profile and kills its adapter process, forcefully tearing
+// down the browser so the profile dir is fully released for sanitize/upload.
 func (h *Handle) Stop() error {
 	err := h.adp.Stop(h.ProfileID)
-	h.client.Kill()
+	if h.client != nil {
+		h.client.Kill()
+	}
 	return err
 }
 
@@ -190,10 +226,26 @@ func assembleReadyProfile(adapterDir string, opts Options, fp FingerprintData) (
 		flags = defaultGreenFlags()
 	}
 
+	// adapter.exe only wires the proxy into chrome (--proxy-server/username/password)
+	// when proxy_masking == "custom"; any other value drops the proxy and the browser
+	// leaks the real IP. A proxy is present in Overrides.Proxy iff opts.Proxy != nil, so
+	// force "custom" here — last choke point before the adapter, always consistent with
+	// the proxy actually sent regardless of what the API-supplied flags said.
+	if opts.Proxy != nil {
+		flags.ProxyMasking = "custom"
+	}
+
+	// DisplayName is what the adapter shows as the browser session name; fall back
+	// to Name (the profile-dir key) only when the caller doesn't supply one.
+	displayName := opts.DisplayName
+	if displayName == "" {
+		displayName = opts.Name
+	}
+
 	major, browserVersion := coreVersions(adapterDir)
 	tzFill := true
 	rp := ReadyProfile{
-		Name:    opts.Name,
+		Name:    displayName,
 		IsLocal: true,
 		Core: ReadyProfileCore{
 			Browser: ProfileMetaCore{

@@ -117,6 +117,9 @@ func (c *browserAdapterRPCClient) Start(req StartRequest) (StartResponse, error)
 }
 
 func (c *browserAdapterRPCClient) Stop(profileID string) error {
-	var reply string
+	// The adapter's Plugin.Stop reply is an interface{}, not a string — decoding
+	// it into *string fails with a gob type error even though the stop itself
+	// succeeded. Use interface{} so a clean stop returns nil.
+	var reply interface{}
 	return c.client.Call("Plugin.Stop", profileID, &reply)
 }

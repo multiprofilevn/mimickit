@@ -84,6 +84,45 @@ func TestStartRequestProxyOverride(t *testing.T) {
 	}
 }
 
+// TestAssembleReadyProfile_ProxyForcesCustomMasking guards the proxy-leak fix:
+// when a proxy is set, proxy_masking MUST be "custom" (adapter only wires the
+// proxy into chrome for "custom"; "disabled" leaks the real IP), even when the
+// caller-supplied flags say "disabled".
+func TestAssembleReadyProfile_ProxyForcesCustomMasking(t *testing.T) {
+	flags, _ := json.Marshal(ProfileMetaFlags{ProxyMasking: "disabled"})
+
+	withProxy := Options{
+		Name:  "with-proxy",
+		Flags: flags,
+		Proxy: &ProxySpec{Type: "http", Host: "1.2.3.4", Port: 8080},
+	}
+	raw, err := assembleReadyProfile("", withProxy, resolveFingerprint(withProxy))
+	if err != nil {
+		t.Fatalf("assembleReadyProfile: %v", err)
+	}
+	var wrapper ReadyProfileResponse
+	if err := json.Unmarshal(raw, &wrapper); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if wrapper.Data.Flags.ProxyMasking != "custom" {
+		t.Errorf("ProxyMasking with proxy = %q, want custom", wrapper.Data.Flags.ProxyMasking)
+	}
+
+	// No proxy → caller flag preserved (no forced override, direct connection).
+	noProxy := Options{Name: "no-proxy", Flags: flags}
+	raw2, err := assembleReadyProfile("", noProxy, resolveFingerprint(noProxy))
+	if err != nil {
+		t.Fatalf("assembleReadyProfile (no proxy): %v", err)
+	}
+	var wrapper2 ReadyProfileResponse
+	if err := json.Unmarshal(raw2, &wrapper2); err != nil {
+		t.Fatalf("unmarshal (no proxy): %v", err)
+	}
+	if wrapper2.Data.Flags.ProxyMasking != "disabled" {
+		t.Errorf("ProxyMasking without proxy = %q, want disabled", wrapper2.Data.Flags.ProxyMasking)
+	}
+}
+
 func TestProfileIDFromName_UUIDFormat(t *testing.T) {
 	id := profileIDFromName("my-profile")
 	if len(id) != 36 || strings.Count(id, "-") != 4 {

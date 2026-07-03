@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -60,26 +61,59 @@ func findCDPPort(ctx context.Context, timeout time.Duration) (*cdpEndpoint, erro
 
 // scanChromeDebugPort walks processes, finds a chrome binary launched with
 // --remote-debugging-port=<n> (skipping crashpad helpers), and returns the port
-// plus the owning PID. Returns (0, 0) when none is found.
+// plus the owning PID. gopsutil is primary; on Windows a wmic fallback covers
+// contexts where gopsutil can't read a process cmdline (GUI apps have hit this).
+// Returns (0, 0) when none is found.
 func scanChromeDebugPort() (int, int32) {
-	procs, err := process.Processes()
+	if procs, err := process.Processes(); err == nil {
+		for _, p := range procs {
+			name, err := p.Name()
+			if err != nil || !isChromeProcessName(name) {
+				continue
+			}
+			cmdline, err := p.Cmdline()
+			if err != nil || cmdline == "" {
+				continue
+			}
+			if strings.Contains(cmdline, "crashpad") {
+				continue
+			}
+			if port := parseDebugPort(cmdline); port > 0 {
+				return port, p.Pid
+			}
+		}
+	}
+	// Fallback: shell out to wmic (matches the studio launcher's approach). This
+	// reads every chrome.exe cmdline regardless of the querying process context.
+	return scanChromeDebugPortWMIC()
+}
+
+// scanChromeDebugPortWMIC reads chrome.exe command lines via wmic and extracts a
+// --remote-debugging-port. Returns (0, 0) if wmic is absent (removed on some
+// Win11 builds) or no debug port is found — the caller retries until deadline.
+func scanChromeDebugPortWMIC() (int, int32) {
+	out, err := exec.Command("wmic", "process", "where", "name='chrome.exe'", "get", "ProcessId,CommandLine", "/format:list").Output()
 	if err != nil {
 		return 0, 0
 	}
-	for _, p := range procs {
-		name, err := p.Name()
-		if err != nil || !isChromeProcessName(name) {
-			continue
-		}
-		cmdline, err := p.Cmdline()
-		if err != nil || cmdline == "" {
-			continue
-		}
-		if strings.Contains(cmdline, "crashpad") {
-			continue
-		}
-		if port := parseDebugPort(cmdline); port > 0 {
-			return port, p.Pid
+	var curCmd string
+	for _, raw := range strings.Split(string(out), "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "CommandLine="):
+			curCmd = strings.TrimPrefix(line, "CommandLine=")
+		case strings.HasPrefix(line, "ProcessId="):
+			pidStr := strings.TrimPrefix(line, "ProcessId=")
+			if curCmd == "" || strings.Contains(curCmd, "crashpad") {
+				curCmd = ""
+				continue
+			}
+			if port := parseDebugPort(curCmd); port > 0 {
+				var pid int
+				fmt.Sscanf(pidStr, "%d", &pid)
+				return port, int32(pid)
+			}
+			curCmd = ""
 		}
 	}
 	return 0, 0

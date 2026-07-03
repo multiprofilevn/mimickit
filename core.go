@@ -8,20 +8,30 @@ import (
 	"strings"
 )
 
-// DefaultAdapterDir is the dev-machine fallback where adapter.exe + patched
-// chrome live when no explicit dir / env / portable core is found.
-const DefaultAdapterDir = `C:\Users\zorovhs\mlx\deps\mimic_149.2`
-
 // adapterExeName is the plugin binary the core directory must contain.
 const adapterExeName = "adapter.exe"
+
+// mlxDepsDir is the Multilogin install's core location under the user's home:
+// <home>/mlx/deps. The patched Chromium core has an ANTI-TAMPER check that ties
+// it to this install tree — running the core copied to any other path (e.g. a
+// repackaged R2 download under the app's own resources dir) makes chrome crash
+// on startup (exit 0xe06d7363, "browser did not launched in time"). So the core
+// MUST be resolved from (or extracted into) <home>/mlx/deps/mimic_*.
+func mlxDepsDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, "mlx", "deps")
+}
 
 // ResolveCoreDir returns the directory that contains adapter.exe. Resolution
 // priority (first hit wins):
 //  1. explicit dir passed by caller
 //  2. env MLX_ADAPTER_DIR / ADAPTER_DIR
-//  3. exe-relative: <exeDir>/cores/mimic_*, <exeDir>
-//  4. cwd-relative: <cwd>/cores/mimic_*, <cwd>
-//  5. DefaultAdapterDir (dev fallback)
+//  3. the Multilogin install: <home>/mlx/deps/mimic_* (anti-tamper-safe)
+//  4. exe-relative: <exeDir>/cores/mimic_*, <exeDir>
+//  5. cwd-relative: <cwd>/cores/mimic_*, <cwd>
 //
 // The CLIENT launcher owns this — the core version reported to the adapter is
 // derived from the folder actually installed here, never hardcoded by the API.
@@ -40,12 +50,21 @@ func ResolveCoreDir(explicit string) string {
 			return d
 		}
 	}
-	return DefaultAdapterDir
+	// Last resort: the standard Multilogin deps dir itself (may be empty).
+	if deps := mlxDepsDir(); deps != "" {
+		return deps
+	}
+	return ""
 }
 
-// coreSearchBases returns directories to scan for the core, exe-relative first.
+// coreSearchBases returns directories to scan for the core. The Multilogin
+// install (<home>/mlx/deps) is checked FIRST because the core only runs from
+// there (anti-tamper); exe/cwd-relative "cores" dirs follow for portable dev.
 func coreSearchBases() []string {
 	var bases []string
+	if deps := mlxDepsDir(); deps != "" {
+		bases = append(bases, deps)
+	}
 	if exe, err := os.Executable(); err == nil {
 		d := filepath.Dir(exe)
 		bases = append(bases, filepath.Join(d, "cores"), d)

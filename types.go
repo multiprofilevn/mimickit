@@ -6,9 +6,10 @@
 // locally installed core.
 //
 // Wire contract derived from adapter.exe DWARF debug info:
-//   RPC service name on server: "Plugin"
-//   Handshake: MagicCookieKey="mlxba" MagicCookieValue="adapter" ProtocolVersion=1
-//   Protocol:  netrpc over yamux over TCP
+//
+//	RPC service name on server: "Plugin"
+//	Handshake: MagicCookieKey="mlxba" MagicCookieValue="adapter" ProtocolVersion=1
+//	Protocol:  netrpc over yamux over TCP
 package mimickit
 
 // ── net/rpc request/response types ──────────────────────────────────────────
