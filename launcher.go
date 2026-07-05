@@ -49,6 +49,22 @@ type Options struct {
 
 	Proxy *ProxySpec
 
+	// ChromeArgs are arbitrary chrome command-line flags appended LAST (after the
+	// managed mimic flags), so they override or extend anything. Standalone-mode
+	// only — the adapter path exposes no such passthrough.
+	ChromeArgs []string
+	// ManagedFlags toggles the full managed mimic flag set in standalone mode.
+	// nil/true => full set; false => only the 4 flags required for fp injection +
+	// CDP. Standalone-mode only.
+	ManagedFlags *bool
+	// Standalone selects the adapter-less in-process launcher. nil/true =>
+	// standalone (the default); false => the legacy adapter.exe fallback. Kept a
+	// pointer so an explicit false is distinguishable from unset.
+	Standalone *bool
+	// CoreDownload, when set, lets standalone mode fetch+patch the mimic core from
+	// R2 if it is missing locally (EnsureCore). nil => require a pre-installed core.
+	CoreDownload *CoreOpts
+
 	// SkipCDPDiscovery makes Launch return as soon as the adapter reports the
 	// profile started, WITHOUT scanning for the chrome debug port. Manual-drive
 	// callers (the windows client) don't use Handle.CDPPort, so waiting on the
@@ -76,6 +92,12 @@ type Handle struct {
 	chromePID int32
 	adp       browserAdapterV1
 	client    *plugin.Client
+
+	// Standalone-mode teardown. When stopStandalone is non-nil the Handle came
+	// from the adapter-less path: Stop/IsActive use these instead of the adapter
+	// client (which is nil in that mode).
+	stopStandalone func() error
+	activeFn       func() bool
 }
 
 // Launch spawns a dedicated adapter.exe, initializes it, starts one browser
@@ -88,6 +110,13 @@ func Launch(opts Options) (*Handle, error) {
 	}
 	if opts.OSType == "" {
 		opts.OSType = "windows"
+	}
+
+	// Adapter-less path is the DEFAULT (mimickit v0.2.0 no longer depends on
+	// adapter.exe). Set Standalone=false explicitly to fall back to the legacy
+	// adapter path.
+	if standaloneSelected(opts) {
+		return launchStandalone(opts)
 	}
 
 	adapterDir := ResolveCoreDir(opts.AdapterDir)
@@ -145,6 +174,9 @@ func startOnAdapter(adp browserAdapterV1, client *plugin.Client, adapterDir stri
 // Stop terminates this profile and kills its adapter process, forcefully tearing
 // down the browser so the profile dir is fully released for sanitize/upload.
 func (h *Handle) Stop() error {
+	if h.stopStandalone != nil {
+		return h.stopStandalone()
+	}
 	err := h.adp.Stop(h.ProfileID)
 	if h.client != nil {
 		h.client.Kill()
@@ -152,8 +184,12 @@ func (h *Handle) Stop() error {
 	return err
 }
 
-// IsActive reports whether the adapter still considers this profile running.
+// IsActive reports whether this profile is still running. In standalone mode it
+// polls the chrome process; in adapter mode it asks the adapter.
 func (h *Handle) IsActive() (bool, error) {
+	if h.activeFn != nil {
+		return h.activeFn(), nil
+	}
 	return h.adp.IsActive(h.ProfileID)
 }
 

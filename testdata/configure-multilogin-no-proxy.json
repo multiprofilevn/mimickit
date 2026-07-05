@@ -1,0 +1,69 @@
+{
+  "_comment": "Golden fixture of /configure/multilogin response payload (fingerprint + flags) for a Windows Chrome 149 profile WITHOUT proxy. PII scrubbed: webrtc.public_ip empty, geo pinned to New York test coordinates. Shape mirrors multiprofile-v2-api MultiloginFingerprintValue + MULTILOGIN_GREEN_FLAGS.",
+  "fingerprint": {
+    "fonts": [
+      "Arial", "Arial Black", "Calibri", "Cambria", "Comic Sans MS",
+      "Consolas", "Courier New", "Georgia", "Segoe UI", "Tahoma",
+      "Times New Roman", "Trebuchet MS", "Verdana"
+    ],
+    "geolocation": {
+      "accuracy": 100,
+      "altitude": 0,
+      "latitude": 40.7128,
+      "longitude": -74.006
+    },
+    "graphic": {
+      "vendor": "Google Inc. (NVIDIA)",
+      "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "vendor_id": "0x10de",
+      "device_id": "0x2504"
+    },
+    "localization": {
+      "accept_languages": "en-US,en;q=0.9",
+      "languages": "en-US,en",
+      "locale": "en-US"
+    },
+    "media_devices": {
+      "audio_inputs": 1,
+      "audio_outputs": 1,
+      "video_inputs": 1
+    },
+    "navigator": {
+      "hardware_concurrency": 8,
+      "platform": "Win32",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+      "platform_version": "15.0.0",
+      "os_cpu": ""
+    },
+    "ports": [21, 22, 80, 443, 3389, 8080],
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "pixel_ratio": 1.0
+    },
+    "timezone": {
+      "zone": "America/New_York"
+    },
+    "webrtc": {
+      "public_ip": ""
+    }
+  },
+  "flags": {
+    "audio_masking": "natural",
+    "fonts_masking": "natural",
+    "geolocation_masking": "mask",
+    "geolocation_popup": "prompt",
+    "graphics_masking": "mask",
+    "graphics_noise": "natural",
+    "localization_masking": "mask",
+    "media_devices_masking": "natural",
+    "navigator_masking": "mask",
+    "ports_masking": "mask",
+    "proxy_masking": "disabled",
+    "quic_mode": "disabled",
+    "screen_masking": "mask",
+    "startup_behavior": "recover",
+    "timezone_masking": "mask",
+    "webrtc_masking": "disabled"
+  }
+}
