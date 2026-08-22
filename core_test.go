@@ -385,6 +385,39 @@ func TestResolveCoreDir_FindsMultiprofileCore(t *testing.T) {
 	}
 }
 
+// TestCoreExistsIn_ScopedToGivenDir covers the case the no-arg guards get wrong:
+// a caller that resolved the core itself and passes it to Options.AdapterDir.
+// Asking the no-arg guard would search the default bases instead and report the
+// core missing while the launch would have found it.
+func TestCoreExistsIn_ScopedToGivenDir(t *testing.T) {
+	home := isolateEnv(t)
+	// Somewhere the default search bases do not look.
+	elsewhere := newCoreDir(t, filepath.Join(home, "custom-resources"), "149.0.7827.23",
+		adapterExeName, "chrome.exe", "chrome.dll")
+
+	if CoreExists() {
+		t.Error("CoreExists() = true, want false — nothing is on the default bases")
+	}
+	if !CoreExistsIn(elsewhere) {
+		t.Error("CoreExistsIn(dir) = false, want true for a dir holding adapter.exe")
+	}
+	if !StandaloneCoreExistsIn(elsewhere) {
+		t.Error("StandaloneCoreExistsIn(dir) = false, want true for a dir holding chrome")
+	}
+}
+
+func TestStandaloneCoreExistsIn_FalseOnAdapterOnlyDir(t *testing.T) {
+	home := isolateEnv(t)
+	dir := newCoreDir(t, filepath.Join(home, "custom-resources"), "149.0.7827.23", adapterExeName)
+
+	if StandaloneCoreExistsIn(dir) {
+		t.Error("StandaloneCoreExistsIn() = true for an adapter-only dir, want false")
+	}
+	if !CoreExistsIn(dir) {
+		t.Error("CoreExistsIn() = false for an adapter-only dir, want true")
+	}
+}
+
 func TestResolveCoreDir_MlxDepsWinsOverMultiprofile(t *testing.T) {
 	home := isolateEnv(t)
 	want := newCoreDir(t, mlxDeps(home), "mimic_149.2", adapterExeName)

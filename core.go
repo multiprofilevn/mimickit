@@ -175,13 +175,27 @@ func hasStandaloneCore(dir string) bool {
 // core correctly reports false here. Standalone callers want
 // StandaloneCoreExists instead.
 func CoreExists() bool {
-	return hasAdapter(ResolveCoreDir(""))
+	return CoreExistsIn("")
+}
+
+// CoreExistsIn is CoreExists for a caller that already knows where the core
+// should be — pass the same dir given to Options.AdapterDir so the guard and the
+// launch agree on which directory they are talking about. Empty behaves like
+// CoreExists.
+func CoreExistsIn(dir string) bool {
+	return hasAdapter(ResolveCoreDir(dir))
 }
 
 // StandaloneCoreExists reports whether a STANDALONE-mode core is resolvable
 // right now — the guard for the default adapter-less path.
 func StandaloneCoreExists() bool {
-	return hasStandaloneCore(ResolveCoreDir(""))
+	return StandaloneCoreExistsIn("")
+}
+
+// StandaloneCoreExistsIn is StandaloneCoreExists scoped to a known directory.
+// See CoreExistsIn.
+func StandaloneCoreExistsIn(dir string) bool {
+	return hasStandaloneCore(ResolveCoreDir(dir))
 }
 
 // CoreVersion returns the resolved core folder name (e.g. "mimic_149.2") or ""
