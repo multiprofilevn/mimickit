@@ -1,4 +1,4 @@
-module github.com/tuwibu/mimickit
+module github.com/multiprofilevn/mimickit
 
 go 1.26.2
 

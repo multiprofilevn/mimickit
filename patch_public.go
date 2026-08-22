@@ -1,6 +1,6 @@
 package mimickit
 
-import "github.com/tuwibu/mimickit/internal/standalone"
+import "github.com/multiprofilevn/mimickit/internal/standalone"
 
 // PatchCore NOPs the mimic "initial check" gate in the given chrome.dll so a
 // standalone (adapter-less) launch passes it. It is idempotent, backs the

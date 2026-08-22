@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tuwibu/mimickit/internal/standalone"
+	"github.com/multiprofilevn/mimickit/internal/standalone"
 )
 
 // patchMarkerName records which core version PatchCore was last applied to. It

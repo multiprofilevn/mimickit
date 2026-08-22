@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tuwibu/mimickit/internal/standalone"
+	"github.com/multiprofilevn/mimickit/internal/standalone"
 )
 
 // chromeProc is a running chrome process abstracted for testability: the real

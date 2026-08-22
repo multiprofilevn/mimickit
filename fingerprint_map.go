@@ -3,7 +3,7 @@ package mimickit
 import (
 	"fmt"
 
-	"github.com/tuwibu/mimickit/internal/standalone"
+	"github.com/multiprofilevn/mimickit/internal/standalone"
 )
 
 // MapFingerprint translates the API-supplied FingerprintData + ProfileMetaFlags
