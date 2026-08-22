@@ -70,11 +70,22 @@ func resolveMimicExtensions() []string {
 	return dirs
 }
 
+// patchCore is standalone.PatchCore behind a variable so tests can count calls
+// without supplying a real multi-hundred-megabyte DLL.
+var patchCore = standalone.PatchCore
+
 // patchLocalCore ensures a pre-installed core's chrome.dll is patched so the
 // standalone launch passes mimic's initial-check gate WITHOUT adapter.exe. It is
 // idempotent and guarded by the patch marker so the ~100-200MB DLL is only read
 // when a (re)patch is actually needed. A missing chrome.dll is left for the spawn
 // step to surface with a clear error.
+//
+// The patch rewrites chrome.dll in place, so concurrent launches on a cold core
+// would otherwise interleave their writes and corrupt it. Two locks prevent
+// that — one for goroutines, one for other processes sharing the core — and the
+// marker is re-checked after taking each: whoever waited finds the work already
+// done and returns without touching the file. Checking before any lock keeps the
+// common case, an already-patched core, free of lock traffic.
 func patchLocalCore(coreDir string) error {
 	chromeDLL := filepath.Join(coreDir, "chrome.dll")
 	if !fileExists(chromeDLL) {
@@ -87,7 +98,24 @@ func patchLocalCore(coreDir string) error {
 	if !needsRepatch(coreDir, ver) {
 		return nil
 	}
-	if err := standalone.PatchCore(chromeDLL); err != nil {
+
+	mu := corePatchMutex(coreDir)
+	mu.Lock()
+	defer mu.Unlock()
+	if !needsRepatch(coreDir, ver) {
+		return nil
+	}
+
+	release, err := acquirePatchLock(coreDir)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if !needsRepatch(coreDir, ver) {
+		return nil
+	}
+
+	if err := patchCore(chromeDLL); err != nil {
 		return err
 	}
 	return writePatchMarker(coreDir, ver)
