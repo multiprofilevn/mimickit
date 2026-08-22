@@ -134,9 +134,59 @@ func findAdapterUnder(base string) string {
 	if len(matches) == 0 {
 		return ""
 	}
-	// Reverse-sort by name so "mimic_149.2" > "mimic_148.0" picks newest.
-	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
+	sort.Slice(matches, func(i, j int) bool {
+		if c := compareCoreVersions(matches[i], matches[j]); c != 0 {
+			return c > 0
+		}
+		// Same version spelled two ways, or two names that parse as neither:
+		// order by text so the pick does not depend on directory read order.
+		return matches[i] > matches[j]
+	})
 	return filepath.Join(base, matches[0])
+}
+
+// versionParts splits a core folder name into its numeric components, dropping
+// the mimic_ prefix so both naming styles compare on equal terms. A component
+// that is not a number becomes -1, which sorts a stray directory below every
+// real version instead of letting it win on a letter.
+func versionParts(name string) []int {
+	fields := strings.Split(strings.TrimPrefix(name, "mimic_"), ".")
+	out := make([]int, len(fields))
+	for i, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil {
+			n = -1
+		}
+		out[i] = n
+	}
+	return out
+}
+
+// compareCoreVersions orders two core folder names by version: positive when a
+// is newer, zero when they name the same version.
+//
+// The components are numbers, so they must be compared as numbers. By text
+// "149.0.7827.9" outranks "149.0.7827.23" and any "mimic_" name outranks any
+// digit, both wrong. Missing trailing components count as zero, so "149.0" and
+// "149.0.0" are the same version, as are "mimic_149.2" and "149.2".
+//
+// Callers that need a total order must break the zero case themselves — see
+// findAdapterUnder.
+func compareCoreVersions(a, b string) int {
+	as, bs := versionParts(a), versionParts(b)
+	for i := 0; i < len(as) || i < len(bs); i++ {
+		av, bv := 0, 0
+		if i < len(as) {
+			av = as[i]
+		}
+		if i < len(bs) {
+			bv = bs[i]
+		}
+		if av != bv {
+			return av - bv
+		}
+	}
+	return 0
 }
 
 // hasCore reports whether dir holds a core usable by EITHER launch mode. It is

@@ -289,6 +289,98 @@ func TestFindAdapterUnder_PrefersHighestAmongMixed(t *testing.T) {
 	}
 }
 
+// --- version ordering ----------------------------------------------------------
+//
+// Core folders are named after a version, and picking the newest is an ordering
+// over numbers, not over text. Comparing the names as strings gets it wrong
+// wherever a component's digit count changes — which happens on every patch
+// bump past 9.
+
+// TestFindAdapterUnder_PrefersHigherPatchNumber is the case that bites in
+// practice: patch numbers cross the 1-to-2 digit boundary constantly, and by
+// text ".9" sorts above ".23".
+func TestFindAdapterUnder_PrefersHigherPatchNumber(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "149.0.7827.9", adapterExeName)
+	want := newCoreDir(t, base, "149.0.7827.23", adapterExeName)
+
+	if got := findAdapterUnder(base); got != want {
+		t.Errorf("findAdapterUnder() = %q, want the higher patch %q", got, want)
+	}
+}
+
+func TestFindAdapterUnder_PrefersHigherMajorAcrossDigitWidths(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "99.0.1", adapterExeName)
+	want := newCoreDir(t, base, "100.0.1", adapterExeName)
+
+	if got := findAdapterUnder(base); got != want {
+		t.Errorf("findAdapterUnder() = %q, want the higher major %q", got, want)
+	}
+}
+
+// TestFindAdapterUnder_PrefixDoesNotBeatVersion guards a base holding both
+// naming styles: by text any "mimic_" name outranks any digit, so the prefix
+// alone would decide the winner.
+func TestFindAdapterUnder_PrefixDoesNotBeatVersion(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "mimic_149.2", adapterExeName)
+	want := newCoreDir(t, base, "150.0.7900.1", adapterExeName)
+
+	if got := findAdapterUnder(base); got != want {
+		t.Errorf("findAdapterUnder() = %q, want the newer version %q", got, want)
+	}
+}
+
+func TestFindAdapterUnder_ExistingOrderUnchanged(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "mimic_148.0", adapterExeName)
+	want := newCoreDir(t, base, "mimic_149.2", adapterExeName)
+
+	if got := findAdapterUnder(base); got != want {
+		t.Errorf("findAdapterUnder() = %q, want %q", got, want)
+	}
+}
+
+// TestFindAdapterUnder_UnparseableNameLosesToVersion keeps a stray directory
+// from winning on a letter.
+func TestFindAdapterUnder_UnparseableNameLosesToVersion(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "staging-copy", adapterExeName)
+	want := newCoreDir(t, base, "149.0.1", adapterExeName)
+
+	if got := findAdapterUnder(base); got != want {
+		t.Errorf("findAdapterUnder() = %q, want the real version %q", got, want)
+	}
+}
+
+func TestCompareCoreVersions_TreatsMissingTrailingAsZero(t *testing.T) {
+	if got := compareCoreVersions("149.0", "149.0.0"); got != 0 {
+		t.Errorf("compareCoreVersions(149.0, 149.0.0) = %d, want 0", got)
+	}
+	if got := compareCoreVersions("mimic_149.2", "149.2"); got != 0 {
+		t.Errorf("compareCoreVersions ignoring the mimic_ prefix = %d, want 0", got)
+	}
+}
+
+// TestFindAdapterUnder_DeterministicOnUnparseable keeps the pick between two
+// stray names from depending on the order the directory happened to be read in.
+// compareCoreVersions rates them equal, so the tie-break is what decides.
+func TestFindAdapterUnder_DeterministicOnUnparseable(t *testing.T) {
+	base := t.TempDir()
+	newCoreDir(t, base, "alpha-copy", adapterExeName)
+	want := newCoreDir(t, base, "beta-copy", adapterExeName)
+
+	for range 5 {
+		if got := findAdapterUnder(base); got != want {
+			t.Fatalf("findAdapterUnder() = %q, want %q on every call", got, want)
+		}
+	}
+	if compareCoreVersions("alpha-copy", "beta-copy") != 0 {
+		t.Error("compareCoreVersions rated two unparseable names unequal, want 0")
+	}
+}
+
 // --- explicit dir + the app's own resource dir ---------------------------------
 
 // multiprofileBrowserDir mirrors the layout the multiprofile apps download into.
